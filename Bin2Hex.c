@@ -1,11 +1,4 @@
-#define  TIME_ESTIMATION  1
-
-#include <stdio.h>
-#include <stdlib.h>
-
-#if TIME_ESTIMATION
-#include <sys/time.h>
-#endif
+#include "Bin2Hex.h"
 
 int
 inline
@@ -54,37 +47,103 @@ ReadFileAndSize (
 
 void
 inline
+PrintValuToFile (
+  FILE           *OutFile,
+  long           FileSize,
+  unsigned char  *InfileBuffer,
+  char           *Prefix
+  )
+{
+  unsigned long  Index = 0;
+  
+  for (Index = 0; Index < FileSize; Index++) {
+    if ((Index % 16 == 0) && (Prefix != NULL)) {
+      fprintf (OutFile, "%s ", Prefix);
+    }
+
+    if ((((Index + 1) % 16) == 0) || (Index == (FileSize - 1))) {
+      fprintf (OutFile, "0x%02x\n", InfileBuffer[Index]);
+    } else {
+      fprintf (OutFile, "0x%02x, ", InfileBuffer[Index]);
+    }
+  }
+}
+
+void
+inline
 WriteBufToFile (
   FILE           *OutFile,
   long           FileSize,
   unsigned char  *InfileBuffer,
-  unsigned char  IsC
+  enum CODE_TYPE CodeType
   )
 {
   unsigned long  Index = 0;
 
-  if (IsC) fprintf (OutFile, "unsigned char OutVariable[] = {\n");
+  //
+  // Head
+  //
+  switch (CodeType) {
+  case TypeC :
+    fprintf (OutFile, "unsigned char OutVariable[] = {\n");
+    break;
 
-  for (Index = 0; Index < FileSize; Index++) {
-    if (Index % 16 == 0 && IsC == 0) {
-      fprintf (OutFile, "db ");
-    }
-
-    if ((((Index + 1) % 16) == 0) || (Index == (FileSize - 1))) {
-      if (IsC) fprintf (OutFile, "0x%02x\n", InfileBuffer[Index]);
-      else fprintf (OutFile, "0%xh\n", InfileBuffer[Index]);
-    } else {
-      if (IsC) fprintf (OutFile, "0x%02x, ", InfileBuffer[Index]);
-      else fprintf (OutFile, "0%xh, ", InfileBuffer[Index]);
-    }
+  case TypeAsm :
+  default :
+    break;
   }
-  
-  if (IsC) fprintf (OutFile,"};\n");
+
+  //
+  // Body
+  //
+  switch (CodeType) {
+  case TypeC :
+    PrintValuToFile (OutFile, FileSize, InfileBuffer, NULL);
+    break;
+    
+  case TypeAsm :
+    PrintValuToFile (OutFile, FileSize, InfileBuffer, "db");
+    break;
+    
+  default :
+    break;
+  }
+
+  //
+  // Bottom
+  //
+  switch (CodeType) {
+  case TypeC :
+    fprintf (OutFile,"};\n");
+    break;
+
+  case TypeAsm :
+  default :
+    break;
+  }
+}
+
+enum CODE_TYPE
+FindInputCodeType (
+  char          *CodeType
+  )
+{
+  char          *SupportType[] = {INPUT_CODE_TYPE};
+  int           SupportNum = 0;
+  int           Index;
+
+  SupportNum = sizeof (SupportType) / sizeof (SupportType[0]);
+
+  for (Index = 0; Index < SupportNum; Index++)
+    if (!strcasecmp (CodeType, SupportType[Index])) 
+      return Index;
+
+  return TypeUnknown;
 }
 
 void
 main (
-  int Argc, 
+  int  Argc, 
   char *Argv[]
   )
 {
@@ -93,9 +152,10 @@ main (
   unsigned char  *InfileBuffer = NULL;
   
   unsigned char  OutTmp[10] = {0};
-  unsigned char  IsC;
   FILE           *InFile;
   FILE           *OutFile;
+
+  enum CODE_TYPE  CodeType;
 
 #if TIME_ESTIMATION
   struct timeval        StartTime;
@@ -118,6 +178,15 @@ main (
   }
 
   //
+  // Check out put assembly or c
+  //
+  CodeType = FindInputCodeType (Argv[3]);
+  if (CodeType == TypeUnknown) {
+    printf ("ERROR : The code type \"%s\" is not supported in this version. ", Argv[3]);
+    return;
+  }
+
+  //
   // Read input biary and its size then create a output file,  
   //
   Status = ReadFileAndSize (
@@ -133,20 +202,13 @@ main (
   }
 
   //
-  // Check out put assembly or c
+  // Write buffer to ouput file
   //
-  Status = strcmp (Argv[3], "asm");
-  if (Status != 0) {
-    IsC = 1;
-  } else {
-    IsC = 0;
-  }
-
   WriteBufToFile (
     OutFile,
     FileSize,
     InfileBuffer,
-    IsC
+    CodeType
     );
   
 #if TIME_ESTIMATION
